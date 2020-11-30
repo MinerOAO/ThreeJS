@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
+    <title>JSP Page</title>
+    <style>
+        body{margin:0;}
+        canvas{width:100%;height:100%;}
+    </style>
+</head>
+<body>
+    <h1>Hello World!</h1>
+    <script src="js/three.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="./test.js"></script>
+    <script type="x-shader/x-vertex" id="vertexshader"></script>
+    <script type="x-shader/x-fragment" id="fragmentshader">
+        
+
+    </script>
+    <script type="x-shader/x-shader" id="lightshader">
+        varying vec4 FragColor;
+        void main(){
+            FragColor = vec4(1.0f,1.0f,1.0f,1.0f);
+        }
+    </script>
+</body>
+</html>
