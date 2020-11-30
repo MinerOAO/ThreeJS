@@ -15,16 +15,11 @@
     <script src="js/three.js"></script>
     <script src="js/OrbitControls.js"></script>
     <script src="./test.js"></script>
-    <script type="x-shader/x-vertex" id="vertexshader"></script>
-    <script type="x-shader/x-fragment" id="fragmentshader">
-        
-
-    </script>
-    <script type="x-shader/x-shader" id="lightshader">
-        varying vec4 FragColor;
-        void main(){
-            FragColor = vec4(1.0f,1.0f,1.0f,1.0f);
-        }
-    </script>
+    <script type="x-shader/x-vertex" id="vertexshader"
+    src="./vertexshader.shader"></script>
+    <script type="x-shader/x-fragment" id="fragmentshader" 
+    src="./fragmentshader.shader"></script>
+    <script type="x-shader/x-shader" id="lightshader" 
+    src="./lightshader.shader"></script>
 </body>
 </html>
