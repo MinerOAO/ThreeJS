@@ -37,19 +37,31 @@ gl.attachShader(program,glFragmentShader);
 gl.linkProgram(program);
 const material = new THREE.ShaderMaterial();
 */
-var geometry_02 = new THREE.Geometry();
-var material_02 = new THREE.LineBasicMaterial({color:0x0000FF});
-geometry_02.vertices.push(new THREE.Vector3(-10,0,0));
-geometry_02.vertices.push(new THREE.Vector3( 0, 10, 0) );
-geometry_02.vertices.push(new THREE.Vector3( 10, 0, 0) );
-geometry_02.vertices.push(new THREE.Vector3( -10, 0, 0) );
-var line_01 = new THREE.Line(geometry_02,material_02);
+var canvas = document.getElementById("webglCanvas");
+var gl = canvas.getContext("webgl2");
+var uniform_01 = {
+    texture:{
+        value:new THREE.TextureLoader().load("container.jpg"),
+        crossOrigin:null
+    }
+}
+var geometry = new THREE.BoxGeometry(1,1,1);
+var material = new THREE.ShaderMaterial(
+    {
+        uniforms:uniform_01,
+        vertexShader:document.getElementById('vertexshader').textContent,
+        fragmentShader:document.getElementById('fragmentshader').textContent
+    }
+);
+var cube = new THREE.Mesh(geometry,material);
+
 
 var ambientlight = new THREE.AmbientLight(0xFFFFF);
 
 var scene = new THREE.Scene();
-scene.add(line_01);
+scene.add(cube);
 scene.add(ambientlight);
+
 var camera = new THREE.PerspectiveCamera(75,window.innerWidth/innerHeight,0.1,100);
 //视野角度FOV,长宽比,近平面距离,远平面距离
 
@@ -68,6 +80,8 @@ function animate_01(){
     camera.lookAt(0,0,0);
 }
 function animate_02(){
+    gl.clearColor(1,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     requestAnimationFrame(animate_02);
     var elapsed = clock.getElapsedTime();
     renderer.render(scene,camera);
@@ -75,6 +89,7 @@ function animate_02(){
     camera.lookAt(0,0,0);
 } 
 animate_01();
+/*
 document.onkeydown=function(event){
     event=(event)? event:window.event;
     if(event.keyCode){
@@ -93,6 +108,7 @@ document.onkeydown=function(event){
         
     }
 }
+
 function createShader(gl,sourceCode,type){//type:gl.VERTEX_SHADER or gl.FRAGMENT_SHADER
     var shader = gl.createShader(type);
     gl.shaderSource(shader,sourceCode);
@@ -103,3 +119,4 @@ function createShader(gl,sourceCode,type){//type:gl.VERTEX_SHADER or gl.FRAGMENT
     }
     return shader;
 }
+*/

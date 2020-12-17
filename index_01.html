@@ -42,7 +42,7 @@
 
             vec3 viewDir = normalize(viewPos - fragPos);
             vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
-            float spec = pow(max(dot(viewDir,reflectDir),0.0),32);//pow(***,Shininess),反光度，此处为32,range(0,256)
+            float spec = pow(max(dot(viewDir,reflectDir),0.0),32.0);//pow(***,Shininess),反光度，此处为32,range(0,256)
             vec3 specular = 0.5 * spec * lightColor;
 
             vec3 result = (ambient + diffuse + specular) * objectColor;
@@ -72,7 +72,7 @@
             vec3 diffuse;
             vec3 specular;
             float shininess;
-        }
+        };
         uniform Material material_01;
         varying vec3 vNormal; //原始法向量
         varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
@@ -88,19 +88,73 @@
             vec3 norm = normalize(vNormal);//标准化法向量
             vec3 lightDir = normalize(lightPos - fragPos);//标准化光源向量
             float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
-            vec3 diffuse = lightColor * (diff * material.diffuse);
+            vec3 diffuse = vec3(1.0,1.0,1.0);//lightColor * (diff * material_01.diffuse);
+
+            vec3 viewDir = normalize(viewPos - fragPos);
+            vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
+            float spec = pow(max(dot(viewDir,reflectDir),0.0),material_01.shininess);//pow(***,Shininess),反光度，此处为32,range(0,256)
+            vec3 specular = lightColor * (spec * material_01.specular);
+            
+            vec3 result = ambient + diffuse + specular;
+            gl_FragColor = vec4(result,1.0);
+        }
+
+    </script>
+    <script type="x-shader/x-vertex" id="vertexshader_03">
+        varying vec3 vNormal; //out
+        varying vec2 vUv;
+        varying vec3 vPos; 
+        varying vec3 fragPos;
+        void main() { 
+            vNormal = normal; //calculate normal direction 
+            vUv = uv; 
+            vPos = position;
+            fragPos = vec3(modelMatrix * vec4(vPos, 1.0));
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0);// 好像连顺序都不能乱
+        }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragmentshader_03">
+        //似乎加载不了材质，代码？非2次幂？
+        //
+        struct texMaterial{
+            vec3 ambient;
+            sampler2D diffuse;//漫反射贴图
+            sampler2D specular;//镜面反射（高光）贴图
+            float shininess;
+        };
+        struct light {
+            vec3 position;
+
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+        };
+        uniform texMaterial material_01;
+        uniform light light_01;
+        varying vec3 vNormal; //原始法向量
+        varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
+        varying vec3 vPos; //
+        varying vec3 fragPos;//片段位置，可理解为像素
+        uniform vec3 viewPos;//摄像机、观察者位置
+        void main() { 
+            vec3 ambient = light_01.ambient * material_01.ambient; 
+            
+            vec3 norm = normalize(vNormal);//标准化法向量
+            vec3 lightDir = normalize(light_01.position - fragPos);//标准化光源向量
+            float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
+            vec3 diffuse = light_01.diffuse * (diff * vec3(texture2D(material_01.diffuse,vUv)));
 
             vec3 viewDir = normalize(viewPos - fragPos);
             vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
             float spec = pow(max(dot(viewDir,reflectDir),0.0),material.shininess);//pow(***,Shininess),反光度，此处为32,range(0,256)
-            vec3 specular = lightColor * (spec * material.specular);
+            vec3 specular = light_01.specular * (spec * vec3(texture2D(material_01.specular,vUv)));
 
             vec3 result = ambient + diffuse + specular;
             gl_FragColor = vec4(result,1.0);
         }
 
     </script>
-
     <style type="text/css">
         div#canvas-frame {
             border: none;
@@ -157,25 +211,33 @@
         }
     };
     var MatUniform = {
+        material_01:{
+            value:[{
+                ambient:new THREE.Vector3(0.2,0.2,0.2),
+                diffuse:new THREE.Vector3(0.5,0.5,0.5),
+                specular:new THREE.Vector3(0.8,0.8,0.8),
+                shininess:32.0
+            }]
+        },
+        lightColor:{value:new THREE.Vector3(0.8,0.8,0.8)},
+        lightPos:{value:new THREE.Vector3(5.0,5.0,5.0)},
+        viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)}
+    };
+    var texUniform = {
 
     };
-    uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
-    var pureMaterial_01 = new THREE.ShaderMaterial({
-        uniforms: pureUniform,
-        vertexShader: document.getElementById('vertexshader_01').textContent,
-        fragmentShader: document.getElementById('fragmentshader_01').textContent
-    });
+    //uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
     var pureMaterial_02 = new THREE.ShaderMaterial({
         uniforms: MatUniform,
-        vertexShader: document.getElementById('vertexshader_01').textContent,
-        fragmentShader: document.getElementById('fragmentshader_01').textContent
+        vertexShader: document.getElementById('vertexshader_02').textContent,
+        fragmentShader: document.getElementById('fragmentshader_02').textContent
     });
     
     main()
     render()
     window.onkeydown = function(e) {
             if (e && e.keyCode === 49) {
-                planeMesh.material = pureMaterial_01;
+                planeMesh.material = pureMaterial_02;
             }
             if (e && e.keyCode === 50) {
                 planeMesh.material = pureMaterial_02;
@@ -207,7 +269,7 @@
 
     function plane() {
         var planeGeo = new THREE.PlaneGeometry(100, 100, 10, 10) //创建平面
-        planeMesh = new THREE.Mesh(planeGeo, pureMaterial)
+        planeMesh = new THREE.Mesh(planeGeo, pureMaterial_02)
         planeMesh.position.set(0, 0, 0)
         planeMesh.rotation.x = -0.5 * Math.PI
         scene.add(planeMesh)
