@@ -1,30 +1,246 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
-    <title>JSP Page</title>
-    <style>
-        body{margin:0;}
-        canvas{width:100%;height:100%;}
-    </style>
-</head>
-<body>
-    <h1>Hello World!</h1>
+    <meta charset="UTF-8" />
+    <title>例子1</title>
     <script src="js/three.js"></script>
     <script src="js/OrbitControls.js"></script>
-    <script src="./test.js"></script>
-    <script type="x-shader/x-vertex" id="vertexshader"></script>
-    <script type="x-shader/x-fragment" id="fragmentshader">
-        
+    <script type="x-shader/x-vertex" id="vertexshader1">
+        varying vec3 vNormal; 
+        void main() { 
+            vNormal = normalMatrix * normal; 
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); 
+        }
 
     </script>
-    <script type="x-shader/x-shader" id="lightshader">
-        varying vec4 FragColor;
-        void main(){
-            FragColor = vec4(1.0f,1.0f,1.0f,1.0f);
+
+    <script type="x-shader/x-fragment" id="fragmentshader1">
+        varying vec3 vNormal; 
+        void main() { 
+            vec3 lightdir = vec3(1.0, 1.0, 1.0); 
+            lightdir = normalize(lightdir); 
+            float dProd = max(0.0, dot(vNormal, lightdir)); 
+            gl_FragColor = vec4(dProd,dProd,dProd,1.0);//(1.0,0.0,1.0,1.0);
+         }
+    </script>
+
+    <script type="x-shader/x-vertex" id="vertexshader2">
+        void main() { 
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); 
         }
     </script>
+
+    <script type="x-shader/x-fragment" id="fragmentshader2">
+        void main() { 
+            gl_FragColor = vec4(1.0,0.0,1.0,0.5); 
+        }
+    </script>
+
+    <script type="x-shader/x-vertex" id="vertexshader3">
+        uniform float amplitude; 
+        varying vec3 vNormal; //out
+        varying vec2 vUv;
+        varying vec3 vPos; 
+        void main() { 
+            vNormal = normal; //calculate normal direction 
+            vUv = uv; 
+            vPos = position;
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0); 
+        }
+
+
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragmentshader3">
+        //似乎加载不了材质，代码？非2次幂？
+        varying vec3 vNormal; 
+        varying vec2 vUv; 
+        varying vec3 vPos;
+        uniform vec3 color;
+        uniform sampler2D texture_01; 
+        void main() { 
+            vec3 light = vec3(1.0, 1.0, 1.0); 
+            light = normalize(light); 
+            float dProd = dot(vNormal, light) * 0.5 + 0.5; //mapping the range between 0 and 1 
+            vec4 tcolor= texture2D(texture_01, vUv); 
+            vec4 gray = vec4(tcolor.r,tcolor.g,tcolor.b,1.0); 
+            gl_FragColor = gray * vec4(vec3(dProd), 1.0)* 0.5 + vec4(vec3(dProd) * vec3(color), 1.0) * 0.5; 
+        }
+
+    </script>
+
+    <style type="text/css">
+        div#canvas-frame {
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            height: 600px;
+            background-color: #eeeeee;
+        }
+        
+        .contain {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 40px;
+            overflow: auto;
+        }
+        
+        .instruct {
+            background-color: #dffaf0ce;
+            padding: 0 20px;
+            width: 300px;
+            text-align: center;
+            line-height: 40px;
+        }
+        
+        body {
+            margin: 0;
+            background-color: #a8f0ecce;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="contain">
+        <div class="instruct">
+            <h2>操作说明</h2>
+            <span>切换桌面shader:<br>数字键1:默认材质<br>数字键2:绿色材质<br>数字键3:硬木材质<br>数字键4:石砖材质<br>数字键5:画布材质</span>
+        </div>
+        <div id="wrap"></div>
+    </div>
 </body>
+<script>
+    var container
+    var camera, scene, renderer
+        //用于轨道控制器
+    var orbitControls
+    var delta
+    var cylinderMesh1, cylinderMesh2, cylinderMesh3, cylinderMesh4
+    var planeMesh
+    var shaderindex = 1
+    var vertexindex = 'vertexshader' + shaderindex
+    var fragindex = 'fragmentshader' + shaderindex
+    var customUniforms = {
+        delta: {
+            value: 0
+        }
+    };
+    var uniforms1 = {
+        color: {
+            value: new THREE.Color(0x66CCFF)
+        },
+        texture: {
+            value: new THREE.TextureLoader().load("container.jpg")
+        }
+    };
+    uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
+    var shadermater = new THREE.ShaderMaterial({
+        uniforms: uniforms1,
+        vertexShader: document.getElementById('vertexshader3').textContent,
+        fragmentShader: document.getElementById('fragmentshader3').textContent
+    });
+    var planemat = new THREE.ShaderMaterial({
+        vertexShader: document.getElementById(vertexindex).textContent,
+        fragmentShader: document.getElementById(fragindex).textContent
+    })
+
+    function mat(i) {
+        let vertex = 'vertexshader' + i
+        let frag = 'fragmentshader' + i
+        return new THREE.ShaderMaterial({
+            vertexShader: document.getElementById(vertex).textContent,
+            fragmentShader: document.getElementById(frag).textContent
+        })
+    }
+    main()
+    render()
+    window.onkeydown = function(e) {
+        if (e && e.keyCode === 49 || e && e.keyCode === 50 || e && e.keyCode === 51 || e && e.keyCode === 52 || e && e
+            .keyCode === 53) {
+            if (e && e.keyCode === 49) {
+                shaderindex = 1;
+                planeMesh.material = mat(shaderindex)
+            }
+            if (e && e.keyCode === 50) {
+                shaderindex = 2
+                planeMesh.material = mat(shaderindex)
+            }
+            if (e && e.keyCode === 51) {
+                uniforms1.texture.value = new THREE.TextureLoader().load("container.jpg")
+                planeMesh.material = shadermater
+            }
+            if (e && e.keyCode === 52) {
+                uniforms1.texture.value = new THREE.TextureLoader().load("container.jpg")
+                planeMesh.material = shadermater
+            }
+            if (e && e.keyCode === 53) {
+                uniforms1.texture.value = new THREE.TextureLoader().load("container.jpg")
+                planeMesh.material = shadermater
+            }
+            planeMesh.material.side = THREE.DoubleSide
+            planeMesh.material.needsUpdate = true;
+            planeMesh.needsUpdate = true;
+        }
+    }
+
+    function main() {
+        container = document.getElementById('wrap')
+        scene = new THREE.Scene()
+        camera = new THREE.PerspectiveCamera(
+            45, 600 / 600, 0.1, 10000
+        )
+        camera.position.set(100, 300, 100)
+        camera.lookAt(new THREE.Vector3(0, 0, 0))
+        renderer = new THREE.WebGLRenderer({
+            alpha: true,
+            antialias: true
+        })
+        renderer.setClearColor(new THREE.Color(0x000000))
+        renderer.setSize(600, 600)
+        container.appendChild(renderer.domElement)
+        orbitControls = new THREE.OrbitControls(camera, renderer.domElement)
+        var ambientLight = new THREE.AmbientLight(0x606060)
+        scene.add(ambientLight)
+        var pointlight = new THREE.PointLight(0x66CCFF, 1, 0, 1)
+        pointlight.position.set(60, 70, 5)
+        scene.add(pointlight)
+        plane()
+        cylinder()
+    }
+
+    function plane() {
+        var planeGeo = new THREE.PlaneGeometry(100, 100, 10, 10) //创建平面
+        planeMesh = new THREE.Mesh(planeGeo, planemat)
+        planeMesh.position.set(0, 0, 0)
+        planeMesh.rotation.x = -0.5 * Math.PI
+        scene.add(planeMesh)
+    }
+
+    function cylinder() {
+        var cylinderGeo = new THREE.CylinderGeometry(5, 5, 40, 40, 40)
+        var cylindermat = new THREE.ShaderMaterial({
+            vertexShader: document.getElementById(vertexindex).textContent,
+            fragmentShader: document.getElementById(fragindex).textContent
+        })
+        cylinderMesh1 = new THREE.Mesh(cylinderGeo, cylindermat)
+        cylinderMesh1.position.set(40, -20.1, 40)
+        scene.add(cylinderMesh1)
+        cylinderMesh2 = new THREE.Mesh(cylinderGeo, cylindermat)
+        cylinderMesh2.position.set(-40, -20.1, 40)
+        scene.add(cylinderMesh2)
+        cylinderMesh3 = new THREE.Mesh(cylinderGeo, cylindermat)
+        cylinderMesh3.position.set(40, -20.1, -40)
+        scene.add(cylinderMesh3)
+        cylinderMesh4 = new THREE.Mesh(cylinderGeo, cylindermat)
+        cylinderMesh4.position.set(-40, -20.1, -40)
+        scene.add(cylinderMesh4)
+    }
+
+    function render() {
+        requestAnimationFrame(render)
+        renderer.render(scene, camera)
+    }
+</script>
+
 </html>
