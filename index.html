@@ -6,70 +6,106 @@
     <title>例子1</title>
     <script src="js/three.js"></script>
     <script src="js/OrbitControls.js"></script>
-    <script type="x-shader/x-vertex" id="vertexshader1">
-        varying vec3 vNormal; 
-        void main() { 
-            vNormal = normalMatrix * normal; 
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); 
-        }
 
-    </script>
-
-    <script type="x-shader/x-fragment" id="fragmentshader1">
-        varying vec3 vNormal; 
-        void main() { 
-            vec3 lightdir = vec3(1.0, 1.0, 1.0); 
-            lightdir = normalize(lightdir); 
-            float dProd = max(0.0, dot(vNormal, lightdir)); 
-            gl_FragColor = vec4(dProd,dProd,dProd,1.0);//(1.0,0.0,1.0,1.0);
-         }
-    </script>
-
-    <script type="x-shader/x-vertex" id="vertexshader2">
-        void main() { 
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); 
-        }
-    </script>
-
-    <script type="x-shader/x-fragment" id="fragmentshader2">
-        void main() { 
-            gl_FragColor = vec4(1.0,0.0,1.0,0.5); 
-        }
-    </script>
-
-    <script type="x-shader/x-vertex" id="vertexshader3">
-        uniform float amplitude; 
+    <script type="x-shader/x-vertex" id="vertexshader_01">
         varying vec3 vNormal; //out
         varying vec2 vUv;
         varying vec3 vPos; 
+        varying vec3 fragPos;
         void main() { 
-            vNormal = normal; //calculate normal direction 
+            vNormal = mat3(transpose(inverse(modelMatrix))) * normal; //修复不等比缩放，inverse逆矩阵开销巨大
             vUv = uv; 
             vPos = position;
-            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0); 
+            fragPos = vec3(modelMatrix * vec4(vPos, 1.0));
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0);// 好像连顺序都不能乱
         }
-
-
     </script>
 
-    <script type="x-shader/x-fragment" id="fragmentshader3">
+    <script type="x-shader/x-fragment" id="fragmentshader_01">
         //似乎加载不了材质，代码？非2次幂？
-        varying vec3 vNormal; 
-        varying vec2 vUv; 
-        varying vec3 vPos;
-        uniform vec3 color;
-        uniform sampler2D texture_01; 
+        //
+        struct Material{
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+            vec3 objectColor;
+            float shininess;
+        };//有问题？？
+        uniform Material material_01;
+        varying vec3 vNormal; //原始法向量
+        varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
+        varying vec3 vPos; //
+        varying vec3 fragPos;//片段位置，可理解为像素
+        uniform vec3 lightColor;//光源颜色
+        uniform vec3 lightPos;//光源位置
+        uniform vec3 viewPos;//摄像机、观察者位置 
         void main() { 
-            vec3 light = vec3(1.0, 1.0, 1.0); 
-            light = normalize(light); 
-            float dProd = dot(vNormal, light) * 0.5 + 0.5; //mapping the range between 0 and 1 
-            vec4 tcolor= texture2D(texture_01, vUv); 
-            vec4 gray = vec4(tcolor.r,tcolor.g,tcolor.b,1.0); 
-            gl_FragColor = gray * vec4(vec3(dProd), 1.0)* 0.5 + vec4(vec3(dProd) * vec3(color), 1.0) * 0.5; 
+            vec3 ambient = material_01.ambient * lightColor;
+            
+            vec3 norm = normalize(vNormal);//标准化法向量
+            vec3 lightDir = normalize(lightPos - fragPos);//标准化光源向量
+            float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
+            vec3 diffuse = lightColor * (diff * material_01.diffuse);
+
+            vec3 viewDir = normalize(viewPos - fragPos);
+            vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
+            float spec = pow(max(dot(viewDir,reflectDir),0.0),material_01.shininess);//pow(***,Shininess),反光度，此处为32,range(0,256)
+            vec3 specular = lightColor * (spec * material_01.specular);
+            
+            vec3 result = (ambient + diffuse + specular) * material_01.objectColor;
+            gl_FragColor = vec4(result,1.0);
         }
 
     </script>
+    <script type="x-shader/x-vertex" id="vertexshader_02">
+        varying vec3 vNormal; //out
+        varying vec2 vUv;
+        varying vec3 vPos; 
+        varying vec3 fragPos;
+        void main() { 
+            vNormal = mat3(transpose(inverse(modelMatrix))) * normal; //修复不等比缩放，inverse逆矩阵开销巨大
+            vUv = uv; 
+            vPos = position;
+            fragPos = vec3(modelMatrix * vec4(vPos, 1.0));
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0);
+        }
+    </script>
 
+    <script type="x-shader/x-fragment" id="fragmentshader_02">
+        struct texMaterial{
+            vec3 ambient;
+            sampler2D diffuse;//漫反射贴图
+            sampler2D specular;//镜面反射（高光）贴图
+            float shininess;
+        };
+
+        uniform texMaterial texMat_01;
+
+        varying vec3 vNormal; //原始法向量
+        varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
+        varying vec3 vPos; //
+        varying vec3 fragPos;//片段位置，可理解为像素
+        uniform vec3 lightColor;//光源颜色
+        uniform vec3 lightPos;//光源位置
+        uniform vec3 viewPos;//摄像机、观察者位置
+        void main() { 
+            vec3 ambient = lightColor * texMat_01.ambient; 
+            
+            vec3 norm = normalize(vNormal);//标准化法向量
+            vec3 lightDir = normalize(lightPos - fragPos);//标准化光源向量
+            float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
+            vec3 diffuse = lightColor * (diff * vec3(texture2D(texMat_01.diffuse,vUv)));
+
+            vec3 viewDir = normalize(viewPos - fragPos);
+            vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
+            float spec = pow(max(dot(viewDir,reflectDir),0.0),texMat_01.shininess);//pow(***,Shininess),反光度，此处为32,range(0,256)
+            vec3 specular = lightColor * (spec * vec3(texture2D(texMat_01.specular,vUv)));
+
+            vec3 result = ambient + diffuse + specular;
+            gl_FragColor = vec4(result,1.0);
+        }
+
+    </script>
     <style type="text/css">
         div#canvas-frame {
             border: none;
@@ -105,7 +141,7 @@
     <div class="contain">
         <div class="instruct">
             <h2>操作说明</h2>
-            <span>切换桌面shader:<br>数字键1:默认材质<br>数字键2:绿色材质<br>数字键3:硬木材质<br>数字键4:石砖材质<br>数字键5:画布材质</span>
+            <span>鼠标拖动以旋转:<br>数字键1:默认<br>数字键2:纯白<br>数字键3:木箱<br>数字键4:没做<br>数字键5:没做</span>
         </div>
         <div id="wrap"></div>
     </div>
@@ -115,126 +151,95 @@
     var camera, scene, renderer
         //用于轨道控制器
     var orbitControls
-    var delta
-    var cylinderMesh1, cylinderMesh2, cylinderMesh3, cylinderMesh4
     var planeMesh
-    var shaderindex = 1
-    var vertexindex = 'vertexshader' + shaderindex
-    var fragindex = 'fragmentshader' + shaderindex
-    var customUniforms = {
-        delta: {
-            value: 0
+    
+    var texture_01 = new THREE.TextureLoader().load("container2.png")//读取贴图
+    var texture_02 = new THREE.TextureLoader().load("container2_specular.png")
+    var texMat_01 = {
+        value:{
+            ambient:new THREE.Vector3(0.1,0.1,0.1),
+            diffuse:texture_01, //漫反射贴图
+            specular:texture_02,//镜面反射（高光）贴图
+            shininess:32.0
         }
+    }//结构体uniform，材质贴图渲染
+    var texUniform = {
+        texMat_01:texMat_01,//结构体uniform传值
+        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},//普通uniform传值
+        lightPos:{value:new THREE.Vector3(40,40,0)},
+        viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)},
     };
-    var uniforms1 = {
-        color: {
-            value: new THREE.Color(0x66CCFF)
-        },
-        texture: {
-            value: new THREE.TextureLoader().load("container.jpg")
-        }
-    };
-    uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
-    var shadermater = new THREE.ShaderMaterial({
-        uniforms: uniforms1,
-        vertexShader: document.getElementById('vertexshader3').textContent,
-        fragmentShader: document.getElementById('fragmentshader3').textContent
+    var texMaterial_01 = new THREE.ShaderMaterial({
+        uniforms: texUniform,//传入所有uniform的集合,texUniform
+        vertexShader: document.getElementById('vertexshader_02').textContent,
+        fragmentShader: document.getElementById('fragmentshader_02').textContent
     });
-    var planemat = new THREE.ShaderMaterial({
-        vertexShader: document.getElementById(vertexindex).textContent,
-        fragmentShader: document.getElementById(fragindex).textContent
-    })
 
-    function mat(i) {
-        let vertex = 'vertexshader' + i
-        let frag = 'fragmentshader' + i
-        return new THREE.ShaderMaterial({
-            vertexShader: document.getElementById(vertex).textContent,
-            fragmentShader: document.getElementById(frag).textContent
-        })
-    }
+    var material_01 = {
+            value:{
+                ambient:new THREE.Vector3(0.1,0.1,0.1),
+                diffuse:new THREE.Vector3(0.6,0.6,0.6),
+                specular:new THREE.Vector3(1.0,1.0,1.0),
+                objectColor:new THREE.Vector3(0.33,0.33,0.66),
+                shininess:32.0,
+            }
+        }//结构体uniform，纯色渲染
+    var MatUniform = {
+        material_01:material_01,
+        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},//普通uniform传值
+        lightPos:{value:new THREE.Vector3(40,40,0)},
+        viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)},
+    };
+    //uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
+    var pureMaterial_01 = new THREE.ShaderMaterial({
+        uniforms: MatUniform,
+        vertexShader: document.getElementById('vertexshader_01').textContent,
+        fragmentShader: document.getElementById('fragmentshader_01').textContent
+    });
+    
     main()
     render()
     window.onkeydown = function(e) {
-        if (e && e.keyCode === 49 || e && e.keyCode === 50 || e && e.keyCode === 51 || e && e.keyCode === 52 || e && e
-            .keyCode === 53) {
             if (e && e.keyCode === 49) {
-                shaderindex = 1;
-                planeMesh.material = mat(shaderindex)
+                planeMesh.material = pureMaterial_01;
+                material_01.value.objectColor= new THREE.Vector3(0.33,0.33,0.66);
             }
             if (e && e.keyCode === 50) {
-                shaderindex = 2
-                planeMesh.material = mat(shaderindex)
+                planeMesh.material = pureMaterial_01;//修改material
+                material_01.value.objectColor= new THREE.Vector3(1.0,1.0,1.0);//修改uniform
             }
             if (e && e.keyCode === 51) {
-                uniforms1.texture.value = new THREE.TextureLoader().load("container.jpg")
-                planeMesh.material = shadermater
+                planeMesh.material = texMaterial_01;
             }
-            if (e && e.keyCode === 52) {
-                uniforms1.texture.value = new THREE.TextureLoader().load("container.jpg")
-                planeMesh.material = shadermater
-            }
-            if (e && e.keyCode === 53) {
-                uniforms1.texture.value = new THREE.TextureLoader().load("container.jpg")
-                planeMesh.material = shadermater
-            }
+            planeMesh.material.uniforms.viewPos.value = camera.position
             planeMesh.material.side = THREE.DoubleSide
             planeMesh.material.needsUpdate = true;
             planeMesh.needsUpdate = true;
-        }
     }
 
     function main() {
-        container = document.getElementById('wrap')
         scene = new THREE.Scene()
-        camera = new THREE.PerspectiveCamera(
-            45, 600 / 600, 0.1, 10000
-        )
-        camera.position.set(100, 300, 100)
-        camera.lookAt(new THREE.Vector3(0, 0, 0))
+        camera = new THREE.PerspectiveCamera(45, 600 / 600, 0.1, 10000)//视场角度，宽高比，近平面距离，远平面距离
+        camera.position.set(100, 100, 0)//摄像机位置
+        camera.lookAt(new THREE.Vector3(0, 0, 0))//摄像机朝向
         renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: true
         })
-        renderer.setClearColor(new THREE.Color(0x000000))
-        renderer.setSize(600, 600)
+        renderer.setClearColor(new THREE.Color(0x000000))//清屏颜色,16进制值
+        renderer.setSize(600, 600)//渲染窗口大小
+        container = document.getElementById('wrap')
         container.appendChild(renderer.domElement)
         orbitControls = new THREE.OrbitControls(camera, renderer.domElement)
-        var ambientLight = new THREE.AmbientLight(0x606060)
-        scene.add(ambientLight)
-        var pointlight = new THREE.PointLight(0x66CCFF, 1, 0, 1)
-        pointlight.position.set(60, 70, 5)
-        scene.add(pointlight)
-        plane()
-        cylinder()
-    }
 
-    function plane() {
+        
         var planeGeo = new THREE.PlaneGeometry(100, 100, 10, 10) //创建平面
-        planeMesh = new THREE.Mesh(planeGeo, planemat)
+        planeMesh = new THREE.Mesh(planeGeo, pureMaterial_01)
+        planeMesh.material.uniforms.viewPos.value = camera.position
+        planeMesh.material.side = THREE.DoubleSide
         planeMesh.position.set(0, 0, 0)
         planeMesh.rotation.x = -0.5 * Math.PI
         scene.add(planeMesh)
-    }
-
-    function cylinder() {
-        var cylinderGeo = new THREE.CylinderGeometry(5, 5, 40, 40, 40)
-        var cylindermat = new THREE.ShaderMaterial({
-            vertexShader: document.getElementById(vertexindex).textContent,
-            fragmentShader: document.getElementById(fragindex).textContent
-        })
-        cylinderMesh1 = new THREE.Mesh(cylinderGeo, cylindermat)
-        cylinderMesh1.position.set(40, -20.1, 40)
-        scene.add(cylinderMesh1)
-        cylinderMesh2 = new THREE.Mesh(cylinderGeo, cylindermat)
-        cylinderMesh2.position.set(-40, -20.1, 40)
-        scene.add(cylinderMesh2)
-        cylinderMesh3 = new THREE.Mesh(cylinderGeo, cylindermat)
-        cylinderMesh3.position.set(40, -20.1, -40)
-        scene.add(cylinderMesh3)
-        cylinderMesh4 = new THREE.Mesh(cylinderGeo, cylindermat)
-        cylinderMesh4.position.set(-40, -20.1, -40)
-        scene.add(cylinderMesh4)
     }
 
     function render() {
