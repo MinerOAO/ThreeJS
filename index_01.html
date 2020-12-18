@@ -168,10 +168,10 @@
                 objectColor:new THREE.Vector3(0.33,0.33,0.66),
                 shininess:32.0,
             }
-        }
+        }//fragmentshader_01, uniform struct material_01的值
     var MatUniform = {
-        material_01:material_01,
-        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},
+        material_01:material_01,//传入fragmentshader_01
+        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},//普通uniform传值
         lightPos:{value:new THREE.Vector3(20,50,0)},
         viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)},
     };
