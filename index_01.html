@@ -6,13 +6,14 @@
     <title>例子1</title>
     <script src="js/three.js"></script>
     <script src="js/OrbitControls.js"></script>
+
     <script type="x-shader/x-vertex" id="vertexshader_01">
         varying vec3 vNormal; //out
         varying vec2 vUv;
         varying vec3 vPos; 
         varying vec3 fragPos;
         void main() { 
-            vNormal = normal; //calculate normal direction 
+            vNormal = mat3(transpose(inverse(modelMatrix))) * normal; //修复不等比缩放，inverse逆矩阵开销巨大
             vUv = uv; 
             vPos = position;
             fragPos = vec3(modelMatrix * vec4(vPos, 1.0));
@@ -23,56 +24,13 @@
     <script type="x-shader/x-fragment" id="fragmentshader_01">
         //似乎加载不了材质，代码？非2次幂？
         //
-        varying vec3 vNormal; //原始法向量
-        varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
-        varying vec3 vPos; //
-        varying vec3 fragPos;//片段位置，可理解为像素
-        uniform vec3 lightColor;//光源颜色
-        uniform vec3 lightPos;//光源位置
-        uniform vec3 viewPos;//摄像机、观察者位置
-        uniform vec3 objectColor;//物体颜色,有材质时不需要 
-        void main() { 
-            float ambi = 0.1;//系数，同下方diff、spec
-            vec3 ambient = ambi * lightColor;
-            
-            vec3 norm = normalize(vNormal);//标准化法向量
-            vec3 lightDir = normalize(lightPos - fragPos);//标准化光源向量
-            float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
-            vec3 diffuse = diff * lightColor;//lightColor
-
-            vec3 viewDir = normalize(viewPos - fragPos);
-            vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
-            float spec = pow(max(dot(viewDir,reflectDir),0.0),32.0);//pow(***,Shininess),反光度，此处为32,range(0,256)
-            vec3 specular = 0.5 * spec * lightColor;
-
-            vec3 result = (ambient + diffuse + specular) * objectColor;
-            gl_FragColor = vec4(result,1.0);
-        }
-
-    </script>
-    <script type="x-shader/x-vertex" id="vertexshader_02">
-        varying vec3 vNormal; //out
-        varying vec2 vUv;
-        varying vec3 vPos; 
-        varying vec3 fragPos;
-        void main() { 
-            vNormal = normal; //calculate normal direction 
-            vUv = uv; 
-            vPos = position;
-            fragPos = vec3(modelMatrix * vec4(vPos, 1.0));
-            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0);// 好像连顺序都不能乱
-        }
-    </script>
-
-    <script type="x-shader/x-fragment" id="fragmentshader_02">
-        //似乎加载不了材质，代码？非2次幂？
-        //
         struct Material{
             vec3 ambient;
             vec3 diffuse;
             vec3 specular;
+            vec3 objectColor;
             float shininess;
-        };
+        };//有问题？？
         uniform Material material_01;
         varying vec3 vNormal; //原始法向量
         varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
@@ -88,33 +46,33 @@
             vec3 norm = normalize(vNormal);//标准化法向量
             vec3 lightDir = normalize(lightPos - fragPos);//标准化光源向量
             float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
-            vec3 diffuse = vec3(1.0,1.0,1.0);//lightColor * (diff * material_01.diffuse);
+            vec3 diffuse = lightColor * (diff * material_01.diffuse);
 
             vec3 viewDir = normalize(viewPos - fragPos);
             vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
             float spec = pow(max(dot(viewDir,reflectDir),0.0),material_01.shininess);//pow(***,Shininess),反光度，此处为32,range(0,256)
             vec3 specular = lightColor * (spec * material_01.specular);
             
-            vec3 result = ambient + diffuse + specular;
+            vec3 result = (ambient + diffuse + specular) * material_01.objectColor;
             gl_FragColor = vec4(result,1.0);
         }
 
     </script>
-    <script type="x-shader/x-vertex" id="vertexshader_03">
+    <script type="x-shader/x-vertex" id="vertexshader_02">
         varying vec3 vNormal; //out
         varying vec2 vUv;
         varying vec3 vPos; 
         varying vec3 fragPos;
         void main() { 
-            vNormal = normal; //calculate normal direction 
+            vNormal = mat3(transpose(inverse(modelMatrix))) * normal; //修复不等比缩放，inverse逆矩阵开销巨大
             vUv = uv; 
             vPos = position;
             fragPos = vec3(modelMatrix * vec4(vPos, 1.0));
-            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0);// 好像连顺序都不能乱
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vPos, 1.0);
         }
     </script>
 
-    <script type="x-shader/x-fragment" id="fragmentshader_03">
+    <script type="x-shader/x-fragment" id="fragmentshader_02">
         //似乎加载不了材质，代码？非2次幂？
         //
         struct texMaterial{
@@ -202,26 +160,23 @@
     var orbitControls
     var planeMesh
     var texture_01
-    var pureUniform = {
-        color: {
-            value: new THREE.Color(0x66CCFF)
-        },
-        texture: {
-            value: texture_01
+    var material_01 = {
+            value:{
+                ambient:new THREE.Vector3(0.1,0.1,0.1),
+                diffuse:new THREE.Vector3(0.6,0.6,0.6),
+                specular:new THREE.Vector3(1.0,1.0,1.0),
+                objectColor:new THREE.Vector3(0.33,0.33,0.66),
+                shininess:32.0,
+            }
         }
-    };
     var MatUniform = {
-        material_01:{
-            value:[{
-                ambient:new THREE.Vector3(0.2,0.2,0.2),
-                diffuse:new THREE.Vector3(0.5,0.5,0.5),
-                specular:new THREE.Vector3(0.8,0.8,0.8),
-                shininess:32.0
-            }]
-        },
-        lightColor:{value:new THREE.Vector3(0.8,0.8,0.8)},
-        lightPos:{value:new THREE.Vector3(5.0,5.0,5.0)},
-        viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)}
+        material_01:material_01,
+        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},
+        lightPos:{value:new THREE.Vector3(20,50,0)},
+        viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)},
+    };
+    var pureUniform = {
+
     };
     var texUniform = {
 
@@ -229,18 +184,18 @@
     //uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
     var pureMaterial_02 = new THREE.ShaderMaterial({
         uniforms: MatUniform,
-        vertexShader: document.getElementById('vertexshader_02').textContent,
-        fragmentShader: document.getElementById('fragmentshader_02').textContent
+        vertexShader: document.getElementById('vertexshader_01').textContent,
+        fragmentShader: document.getElementById('fragmentshader_01').textContent
     });
     
     main()
     render()
     window.onkeydown = function(e) {
             if (e && e.keyCode === 49) {
-                planeMesh.material = pureMaterial_02;
+                material_01.value.objectColor= new THREE.Vector3(0.33,0.33,0.66);
             }
             if (e && e.keyCode === 50) {
-                planeMesh.material = pureMaterial_02;
+                material_01.value.objectColor= new THREE.Vector3(1.0,1.0,1.0);
             }
             planeMesh.material.side = THREE.DoubleSide
             planeMesh.material.needsUpdate = true;
@@ -254,7 +209,7 @@
         camera = new THREE.PerspectiveCamera(
             45, 600 / 600, 0.1, 10000
         )
-        camera.position.set(100, 300, 100)
+        camera.position.set(100, 100, 0)
         camera.lookAt(new THREE.Vector3(0, 0, 0))
         renderer = new THREE.WebGLRenderer({
             alpha: true,
@@ -264,12 +219,12 @@
         renderer.setSize(600, 600)
         container.appendChild(renderer.domElement)
         orbitControls = new THREE.OrbitControls(camera, renderer.domElement)
-        plane()
-    }
 
-    function plane() {
+        MatUniform.viewPos.value = camera.position
+        
         var planeGeo = new THREE.PlaneGeometry(100, 100, 10, 10) //创建平面
         planeMesh = new THREE.Mesh(planeGeo, pureMaterial_02)
+        planeMesh.material.side = THREE.DoubleSide
         planeMesh.position.set(0, 0, 0)
         planeMesh.rotation.x = -0.5 * Math.PI
         scene.add(planeMesh)
