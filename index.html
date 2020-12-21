@@ -22,38 +22,116 @@
     </script>
 
     <script type="x-shader/x-fragment" id="fragmentshader_01">
-        //似乎加载不了材质，代码？非2次幂？
-        //
+        #define POINT_LIGHTS_NUM 2
         struct Material{
             vec3 ambient;
             vec3 diffuse;
             vec3 specular;
             vec3 objectColor;
             float shininess;
-        };//有问题？？
+        };
+        struct DirLight{
+            vec3 direction;//vec3 lightDir = normalize(-light.direction);
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+        };
+        struct PointLight{
+            vec3 position;
+
+            float constant;
+            float linear;
+            float quadratic;
+
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+            bool sign;
+        };
+        struct SpotLight{
+            vec3 position;
+            vec3 direction;
+
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+
+            float cutOff;
+            float outerCutOff;
+
+            float constant;
+            float linear;
+            float quadratic;
+        };
         uniform Material material_01;
+        uniform DirLight dirlight_01;
+        uniform PointLight pointlight[POINT_LIGHTS_NUM];
         varying vec3 vNormal; //原始法向量
         varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
-        varying vec3 vPos; //
         varying vec3 fragPos;//片段位置，可理解为像素
-        uniform vec3 lightColor;//光源颜色
-        uniform vec3 lightPos;//光源位置
         uniform vec3 viewPos;//摄像机、观察者位置 
-        void main() { 
-            vec3 ambient = material_01.ambient * lightColor;
-            
-            vec3 norm = normalize(vNormal);//标准化法向量
-            vec3 lightDir = normalize(lightPos - fragPos);//标准化光源向量
-            float diff = max(dot(norm,lightDir),0.0);//点乘，使用max函数返回两个参数之间较大的参数，从而保证漫反射分量不会变成负数
-            vec3 diffuse = lightColor * (diff * material_01.diffuse);
+        vec3 calcDirLight(DirLight light,vec3 normal,vec3 viewDir,Material m1){
+            vec3 lDir = normalize(-light.direction);
+            float diff = max(dot(normal,lDir),0.0);
+            vec3 reflDir = reflect(-lDir,normal);
+            float spec = pow(max(dot(viewDir,reflDir),0.0),m1.shininess);
 
+            vec3 ambient = light.ambient * m1.ambient;
+            vec3 diffuse = light.diffuse * diff * m1.diffuse;
+            vec3 specular = light.specular * spec * m1.specular;
+
+            return (ambient + diffuse + specular) * m1.objectColor;
+        }
+        vec3 calcPointLight(PointLight light,vec3 normal,vec3 viewDir,vec3 fragPos,Material m1){
+            vec3 lDir = normalize(light.position - fragPos);
+            float diff = max(dot(normal,lDir),0.0);
+            vec3 reflDir = reflect(-lDir,normal);
+            float spec = pow(max(dot(viewDir,reflDir),0.0),m1.shininess);
+            float distance = length(light.position - fragPos);
+            float attenuation = 1.0/(light.constant + light.linear * distance + light.quadratic * distance * distance);
+
+            vec3 ambient = light.ambient * m1.ambient;
+            vec3 diffuse = light.diffuse * diff * m1.diffuse;
+            vec3 specular = light.specular * spec * m1.specular;
+            return (ambient + diffuse + specular) * m1.objectColor;
+        }
+        vec3 calcSpotLight(SpotLight light,vec3 normal,vec3 viewDir,vec3 fragPos,Material m1){
+            vec3 lDir = normalize(light.position - fragPos);
+            float diff = max(dot(normal,lDir),0.0);
+            vec3 reflDir = reflect(-lDir,normal);
+            float spec = pow(max(dot(viewDir,reflDir),0.0),m1.shininess);
+
+            vec3 ambient = light.ambient * m1.ambient;
+            vec3 diffuse = light.diffuse * diff * m1.diffuse;
+            vec3 specular = light.specular * spec * m1.specular;
+
+            float theta = dot(lDir,normalize(-light.direction));
+            float epsilon = light.cutOff - light.outerCutOff;
+            float intensity = clamp((theta - light.outerCutOff) / epsilon,0.0,1.0);//clamp()参数约束,此处range(0.0,1.0)
+            float distance = length(light.position - fragPos);
+            float attenuation = 1.0/(light.constant + light.linear * distance + light.quadratic * distance * distance);
+            if(theta > light.cutOff){
+                return (ambient + diffuse + specular) * m1.objectColor;
+            }
+            else if(theta > light.outerCutOff){
+                return (ambient + diffuse + specular) * m1.objectColor * intensity;
+            }
+            else{
+                return vec3(0.0,0.0,0.0);
+            }
+        }
+        void main() { 
+            vec3 norm = normalize(vNormal);//标准化法向量
             vec3 viewDir = normalize(viewPos - fragPos);
-            vec3 reflectDir = reflect(-lightDir, norm);//reflect函数？
-            float spec = pow(max(dot(viewDir,reflectDir),0.0),material_01.shininess);//pow(***,Shininess),反光度，此处为32,range(0,256)
-            vec3 specular = lightColor * (spec * material_01.specular);
             
-            vec3 result = (ambient + diffuse + specular) * material_01.objectColor;
-            gl_FragColor = vec4(result,1.0);
+            vec3 result = calcDirLight(dirlight_01,norm,viewDir,material_01);
+            for(int i = 0;i < POINT_LIGHTS_NUM;++i){
+                if(pointlight[i].sign != true)
+                break;
+                result += calcPointLight(pointlight[i],norm,viewDir,fragPos,material_01);
+            }
+            //result += calcSpotLight(SpotLight light,norm,viewDir,fragPos,material_01);
+            gl_FragColor = vec4(result,1.0); 
         }
 
     </script>
@@ -72,22 +150,103 @@
     </script>
 
     <script type="x-shader/x-fragment" id="fragmentshader_02">
+        #define POINT_LIGHTS_NUM 2
         struct texMaterial{
             vec3 ambient;
             sampler2D diffuse;//漫反射贴图
             sampler2D specular;//镜面反射（高光）贴图
             float shininess;
         };
+        struct DirLight{
+            vec3 direction;//vec3 lightDir = normalize(-light.direction);
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+        };
+        struct PointLight{
+            vec3 position;
 
+            float constant;
+            float linear;
+            float quadratic;
+
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+            bool sign;
+        };
+        struct SpotLight{
+            vec3 position;
+            vec3 direction;
+
+            vec3 ambient;
+            vec3 diffuse;
+            vec3 specular;
+
+            float cutOff;
+            float outerCutOff;
+
+            float constant;
+            float linear;
+            float quadratic;
+        };
         uniform texMaterial texMat_01;
-
+        uniform DirLight dirlight_01;
+        uniform PointLight pointlight[POINT_LIGHTS_NUM];
         varying vec3 vNormal; //原始法向量
         varying vec2 vUv; //UV，指导着色器绘制贴图,range(0,1)(0,1)
-        varying vec3 vPos; //
         varying vec3 fragPos;//片段位置，可理解为像素
-        uniform vec3 lightColor;//光源颜色
-        uniform vec3 lightPos;//光源位置
         uniform vec3 viewPos;//摄像机、观察者位置
+        vec3 calcDirLight(DirLight light,vec3 normal,vec3 viewDir,texMaterial m1){
+            vec3 lDir = normalize(-light.direction);
+            float diff = max(dot(normal,lDir),0.0);
+            vec3 reflDir = reflect(-lDir,normal);
+            float spec = pow(max(dot(viewDir,reflDir),0.0),m1.shininess);
+
+            vec3 ambient = light.ambient * m1.ambient;
+            vec3 diffuse = light.diffuse * diff * m1.diffuse;//
+            vec3 specular = light.specular * spec * m1.specular;//
+
+            return (ambient + diffuse + specular);
+        }
+        vec3 calcPointLight(PointLight light,vec3 normal,vec3 viewDir,vec3 fragPos,texMaterial m1){
+            vec3 lDir = normalize(light.position - fragPos);
+            float diff = max(dot(normal,lDir),0.0);
+            vec3 reflDir = reflect(-lDir,normal);
+            float spec = pow(max(dot(viewDir,reflDir),0.0),m1.shininess);
+            float distance = length(light.position - fragPos);
+            float attenuation = 1.0/(light.constant + light.linear * distance + light.quadratic * distance * distance);
+
+            vec3 ambient = light.ambient * m1.ambient;
+            vec3 diffuse = light.diffuse * diff * m1.diffuse;//
+            vec3 specular = light.specular * spec * m1.specular;//
+            return (ambient + diffuse + specular);
+        }
+        vec3 calcSpotLight(SpotLight light,vec3 normal,vec3 viewDir,vec3 fragPos,texMaterial m1){
+            vec3 lDir = normalize(light.position - fragPos);
+            float diff = max(dot(normal,lDir),0.0);
+            vec3 reflDir = reflect(-lDir,normal);
+            float spec = pow(max(dot(viewDir,reflDir),0.0),m1.shininess);
+
+            vec3 ambient = light.ambient * m1.ambient;
+            vec3 diffuse = light.diffuse * diff * m1.diffuse;//
+            vec3 specular = light.specular * spec * m1.specular;//
+
+            float theta = dot(lDir,normalize(-light.direction));
+            float epsilon = light.cutOff - light.outerCutOff;
+            float intensity = clamp((theta - light.outerCutOff) / epsilon,0.0,1.0);//clamp()参数约束,此处range(0.0,1.0)
+            float distance = length(light.position - fragPos);
+            float attenuation = 1.0/(light.constant + light.linear * distance + light.quadratic * distance * distance);
+            if(theta > light.cutOff){
+                return (ambient + diffuse + specular);
+            }
+            else if(theta > light.outerCutOff){
+                return (ambient + diffuse + specular) * intensity;
+            }
+            else{
+                return vec3(0.0,0.0,0.0);
+            }
+        }
         void main() { 
             vec3 ambient = lightColor * texMat_01.ambient; 
             
@@ -152,7 +311,38 @@
         //用于轨道控制器
     var orbitControls
     var planeMesh
+
     
+    var dLight = {
+        value:{
+            direction:new THREE.Vector3(0,1000,0),
+            ambient:new THREE.Vector3(0.1,0.1,0.1),
+            diffuse:new THREE.Vector3(0.2,0.2,0.2),
+            specular:new THREE.Vector3(0.4,0.4,0.4),
+        }
+    }
+    var pLight = {
+        value:[{
+            position:new THREE.Vector3(100,100,0),
+            constant:1.0,
+            linear:0.027,
+            quadratic:0.0028,
+            ambient:new THREE.Vector3(0.1,0.1,0.1),
+            diffuse:new THREE.Vector3(0.5,0.5,0.5),
+            specular:new THREE.Vector3(0.9,0.9,0.9),
+            sign:true
+        },
+        {
+            position:new THREE.Vector3(0,10,0),
+            constant:1.0,
+            linear:0.027,
+            quadratic:0.0028,
+            ambient:new THREE.Vector3(0.1,0.1,0.1),
+            diffuse:new THREE.Vector3(0.5,0.5,0.5),
+            specular:new THREE.Vector3(0.9,0.9,0.9),
+            sign:true
+        }]
+    }
     var texture_01 = new THREE.TextureLoader().load("container2.png")//读取贴图
     var texture_02 = new THREE.TextureLoader().load("container2_specular.png")
     var texMat_01 = {
@@ -165,8 +355,8 @@
     }//结构体uniform，材质贴图渲染
     var texUniform = {
         texMat_01:texMat_01,//结构体uniform传值
-        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},//普通uniform传值
-        lightPos:{value:new THREE.Vector3(40,40,0)},
+        dirlight_01:dLight,
+        pointlight_01:pLight,
         viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)},
     };
     var texMaterial_01 = new THREE.ShaderMaterial({
@@ -174,6 +364,8 @@
         vertexShader: document.getElementById('vertexshader_02').textContent,
         fragmentShader: document.getElementById('fragmentshader_02').textContent
     });
+
+
 
     var material_01 = {
             value:{
@@ -184,10 +376,11 @@
                 shininess:32.0,
             }
         }//结构体uniform，纯色渲染
+    
     var MatUniform = {
         material_01:material_01,
-        lightColor:{value:new THREE.Vector3(1.0,1.0,1.0)},//普通uniform传值
-        lightPos:{value:new THREE.Vector3(40,40,0)},
+        dirlight_01:dLight,
+        pointlight:pLight,
         viewPos:{value:new THREE.Vector3(100.0,300.0,100.0)},
     };
     //uniforms1.texture.value.wrapS = uniforms1.texture.value.wrapT = THREE.RepeatWrapping;
@@ -195,10 +388,46 @@
         uniforms: MatUniform,
         vertexShader: document.getElementById('vertexshader_01').textContent,
         fragmentShader: document.getElementById('fragmentshader_01').textContent
+        
     });
+    /*
+    var dataObject = new Date()
+    var startTime = dataObject.getTime()
+    var deltaTime = 0
+    deltaTime = startTime - deltaTime
+    let cos = ((Math.cos(deltaTime) + 1) / 2) * 5
+    let sin = ((Math.sin(deltaTime) + 1) / 2) * 5 
+    */
+
+    scene = new THREE.Scene()
+    camera = new THREE.PerspectiveCamera(45, 600 / 600, 0.1, 10000)//视场角度，宽高比，近平面距离，远平面距离
+    camera.position.set(100, 100, 0)//摄像机位置
+    camera.lookAt(new THREE.Vector3(0, 0, 0))//摄像机朝向
+    renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true
+    })
+    renderer.setClearColor(new THREE.Color(0x000000))//清屏颜色,16进制值
+    renderer.setSize(600, 600)//渲染窗口大小
+    container = document.getElementById('wrap')
+    container.appendChild(renderer.domElement)
+    orbitControls = new THREE.OrbitControls(camera, renderer.domElement)
     
-    main()
+    var planeGeo = new THREE.PlaneGeometry(100, 100, 10, 10) //创建平面
+    planeMesh = new THREE.Mesh(planeGeo, pureMaterial_01)
+    planeMesh.material.uniforms.viewPos.value = camera.position
+
+    planeMesh.material.side = THREE.DoubleSide
+    planeMesh.position.set(0, 0, 0)
+    planeMesh.rotation.x = -0.5 * Math.PI
+    scene.add(planeMesh)
+
     render()
+
+    function render() {
+        requestAnimationFrame(render)
+        renderer.render(scene, camera)
+    }
     window.onkeydown = function(e) {
             if (e && e.keyCode === 49) {
                 planeMesh.material = pureMaterial_01;
@@ -208,43 +437,11 @@
                 planeMesh.material = pureMaterial_01;//修改material
                 material_01.value.objectColor= new THREE.Vector3(1.0,1.0,1.0);//修改uniform
             }
-            if (e && e.keyCode === 51) {
-                planeMesh.material = texMaterial_01;
-            }
+            
             planeMesh.material.uniforms.viewPos.value = camera.position
             planeMesh.material.side = THREE.DoubleSide
             planeMesh.material.needsUpdate = true;
             planeMesh.needsUpdate = true;
-    }
-
-    function main() {
-        scene = new THREE.Scene()
-        camera = new THREE.PerspectiveCamera(45, 600 / 600, 0.1, 10000)//视场角度，宽高比，近平面距离，远平面距离
-        camera.position.set(100, 100, 0)//摄像机位置
-        camera.lookAt(new THREE.Vector3(0, 0, 0))//摄像机朝向
-        renderer = new THREE.WebGLRenderer({
-            alpha: true,
-            antialias: true
-        })
-        renderer.setClearColor(new THREE.Color(0x000000))//清屏颜色,16进制值
-        renderer.setSize(600, 600)//渲染窗口大小
-        container = document.getElementById('wrap')
-        container.appendChild(renderer.domElement)
-        orbitControls = new THREE.OrbitControls(camera, renderer.domElement)
-
-        
-        var planeGeo = new THREE.PlaneGeometry(100, 100, 10, 10) //创建平面
-        planeMesh = new THREE.Mesh(planeGeo, pureMaterial_01)
-        planeMesh.material.uniforms.viewPos.value = camera.position
-        planeMesh.material.side = THREE.DoubleSide
-        planeMesh.position.set(0, 0, 0)
-        planeMesh.rotation.x = -0.5 * Math.PI
-        scene.add(planeMesh)
-    }
-
-    function render() {
-        requestAnimationFrame(render)
-        renderer.render(scene, camera)
     }
 </script>
 
