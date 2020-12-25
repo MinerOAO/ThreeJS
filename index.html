@@ -414,7 +414,7 @@
     <div class="contain">
         <div class="instruct">
             <h2>操作说明</h2>
-            <span>鼠标拖动以旋转:<br>数字键1:默认<br>数字键2:纯白<br>数字键3:Rainbow<br>数字键4:木箱<br>数字键5:没做</span>
+            <span>鼠标拖动以旋转:<br>数字键1:默认<br>数字键2:纯白<br>数字键3:Rainbow<br>数字键4:木箱</span>
         </div>
         <div id="wrap"></div>
     </div>
@@ -536,7 +536,8 @@
     container = document.getElementById('wrap')
     container.appendChild(renderer.domElement)
     orbitControls = new THREE.OrbitControls(camera, renderer.domElement)
-    
+    orbitControls.enableDamping = true;//必须在循环中调用update？
+
     var boxGeo = new THREE.BoxBufferGeometry(60, 60, 60) //创建正方体
     var boxMesh = new THREE.Mesh(boxGeo, pureMaterial_01)
     boxMesh.position.set(0, 0, 0)
@@ -565,6 +566,7 @@
         boxMesh.material.uniforms.iTime.value = time
         boxMesh.rotation.y = time * 0.1
         boxMesh.material.uniforms.viewPos.value = camera.position
+        orbitControls.update()
         requestAnimationFrame(render)
         renderer.render(scene, camera)
     }
