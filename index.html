@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <title>例子1</title>
-    <script src="js/three.js"></script>
+    <script src="js/three.js"></script> 
     <script src="js/OrbitControls.js"></script>
 
     <script type="x-shader/x-vertex" id="vertexshader_01">
@@ -462,8 +462,8 @@
             specular:new THREE.Vector3(0.9,0.9,0.9),
         }]
     }
-    var texture_01 = new THREE.TextureLoader().load("container2.png")//读取贴图
-    var texture_02 = new THREE.TextureLoader().load("container2_specular.png")
+    var texture_01 = new THREE.TextureLoader().load("images/container2.png")//读取贴图
+    var texture_02 = new THREE.TextureLoader().load("images/container2_specular.png")
     var texMat_01 = {
         value:{
             ambient:new THREE.Vector3(0.1,0.1,0.1),
